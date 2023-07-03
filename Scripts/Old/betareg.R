@@ -12,12 +12,12 @@ feeder.veg <- read.csv('Clean-data/Feeder-veg.csv') |>
 
 ## --------------- PREPARE CLOSE DATA ------------------------------------------
 
-ditch <- c('P2', 'P3', 'P5', 'P6', 'P7', 'P8', 'WS4', 'WS8')
+ditch.ls <- c('P2', 'P3', 'P5', 'P6', 'P7', 'P8', 'WS4', 'WS8')
 
 # Subset the data
 close <- feeder.veg |>
-	filter(Meter %in% 1:25) |> # 5
-	filter(!Plot %in% ditch)
+	filter(Meter %in% 1:25) # 5
+	# filter(!Plot %in% ditch.ls)
 
 for(i in 1:nrow(close)){
 	if(is.na(close$Functional[i])){
@@ -582,7 +582,7 @@ for(i in 1:nrow(close)){
 	}
 }
 
-for(i in 1:nrow(close)){
+for(i in 1:nrow(close)){ # non water transect points
 	if(close$Species[i] == 'Litter' | close$Species[i] == 'litter' |
 		 close$Species[i] == 'Bare Ground'){
 		close$Functional[i] <- 'Bare ground'
