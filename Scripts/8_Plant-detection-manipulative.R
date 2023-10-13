@@ -21,6 +21,9 @@ library(broom) # creating clean dataframes from emmeans
 library(broom.mixed) # creating clean dataframes from emmeans
 library(performance) # check_model
 
+## --------------- TIME 0-2 ----------------------------------------------------
+
+
 # Add no plants as a point (0%)
 
 # Clear the decks
@@ -156,3 +159,129 @@ pprob_metet_feeder <- ggeffect(model, terms = c("Meter[0:10, by = 1]", "Feeder",
       axis.title = element_text(size = 14) # increase axis title size
       )+
   	facet_wrap(~group)
+
+## --------------- TIME 0 & 5 --------------------------------------------------
+
+# Clear the decks
+rm(list=ls())
+
+# Bring in the data
+baseline <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 0) |>
+	filter(Veg.Type != 'na') |>
+	dplyr::select(Plot, Time, Direction, Meter, Functional) # Transect
+
+return <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 5) |>
+	filter(Veg.Type != 'na') |>
+	dplyr::select(Plot, Time, Direction, Meter, Functional)
+
+# return <- left_join(return, unique(baseline))
+# 
+# return <- return |>
+# 	dplyr::select(Plot, Direction, Transect, Meter, Functional)
+
+feeder.veg <- rbind(baseline, return)
+
+# We are only interested in the first half of the transect data
+feeder.veg <- feeder.veg |>
+  filter(Meter %in% 1:10)
+
+# Make Native
+for(i in 1:nrow(feeder.veg)){
+	if(is.na(feeder.veg$Functional[i])){
+		feeder.veg$Functional[i] <- 'Native'
+	}
+}
+
+rm(baseline, return) # Clean up
+
+unique(feeder.veg$Functional)
+
+feeder.veg$Transect.ID <- paste(feeder.veg$Plot, feeder.veg$Feeder, 
+ 																feeder.veg$Direction)
+
+feeder.veg$Time <- as_factor(feeder.veg$Time)
+class(feeder.veg$Time)
+
+## --------------- CONDUCT ANALYSES --------------------------------------------
+
+# Simple model
+library(nnet) 
+model <- multinom(Functional ~ Time
+                  * Meter, data = feeder.veg) 
+summary(model)
+
+library(broom)
+tidy(model, conf.int = TRUE)
+
+library(gtsummary)
+tbl_regression(model, exp = TRUE)
+
+library(ggeffects)
+plot <- ggeffects::ggeffect(model, terms = c("Meter[0:10, by = 1]", "Time")) %>%
+    plot()
+plot
+
+# Full model
+model <- multinom(Functional ~ Time
+                  * Meter
+									+ Plot
+									+ Transect.ID,
+									data = feeder.veg) 
+
+## --------------- VISUALIZE ANALYSES ------------------------------------------
+
+# Use model to predict probabilities
+pred.df <- feeder.veg |>
+	dplyr::select(Plot, Transect.ID, Meter, Time)
+
+resp <- predict(model, type="probs", newdata=pred.df)
+
+# predictions <- ggeffects::ggemmeans(model, terms = c('Feeder', 'Meter [all]'),
+# 																		nuisance = c('Plot'))
+
+pred.df <- cbind(pred.df, resp)
+pred.df$`Browsed perennials` <- round(pred.df$`Browsed perennials`, digits = 2)
+pred.df$Native <- round(pred.df$Native, digits = 2)
+pred.df$Ruderal <- round(pred.df$Ruderal, digits = 2)
+
+pred.df <- pred.df |>
+	pivot_longer(cols = 5:7, names_to = 'Functional', values_to = 'Probability')
+
+pred.df <- pred.df |>
+    mutate(Functional = factor(Functional)) |>
+    mutate(Functional = fct_relevel(Functional, c("Native", "Browsed perennials", 
+    																							"Ruderal"))) |>
+	  mutate(Feeder = factor(Time)) |>
+    mutate(Time = fct_relevel(Time, c("0", "5")))
+
+class(pred.df$Time)
+
+# Visualize probability facet wrapped
+ggplot(pred.df, aes(x = Meter, y = Probability, fill = Functional,
+										color = Functional))+
+	geom_jitter(shape = 21, alpha = 0.2)+
+	scale_color_brewer(palette = "Dark2",
+                       name = "")+
+	scale_fill_brewer(palette = "Dark2",
+                       name = "")+
+	scale_x_continuous(breaks = seq(0, 10, 1))+
+	geom_smooth(method = 'lm', formula = y~x, size = 2)+
+	facet_wrap(~Feeder*Functional, ncol = 3)+
+	theme_bw()+
+	xlab('Distance from feeder (m)')+
+	ylab('Detection probability')+
+	theme(panel.grid.minor = element_blank(),
+				panel.grid.major = element_blank(),
+				legend.position = 'none',
+				strip.background = element_blank(),
+  			strip.text.x = element_blank(),
+				aspect.ratio = 2,
+				text=element_text(size=20),
+				axis.title = element_text(face="bold"))
+ggsave(filename = 'Figures/Manipulative-before-after-veg.png')

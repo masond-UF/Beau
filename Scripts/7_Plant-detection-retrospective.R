@@ -85,8 +85,6 @@ model <- multinom(Functional ~ Feeder
 Anova(model)
 # Meter and Feeder*Meter significant
 
-
-
 linearHypothesis(model,
                  c("Native:Meter = 0",
                    "Browsed perennials:Meter = 0",
