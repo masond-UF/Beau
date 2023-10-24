@@ -19,8 +19,6 @@ options(scipen = 999)
 # Clear the decks
 rm(list = ls())
 
-# Bring in the data
-
 # Retro community
 retro.comm <- read.csv("Clean-data/Feeder-veg.csv") |>
   filter(Dataset == "Retrospective") |>
@@ -61,9 +59,14 @@ manip.grad <- read.csv("Clean-data/Feeder-veg.csv") |>
   filter(Dataset == "Manipulative") |>
   filter(Meter %in% 1:3) |>
 	filter(Time == 0 | Time == 5) |>
-	filter(Feeder == 'Y') |>
-	dplyr::select(Plot, Time, Meter, Feeder, Direction, Invasive, Functional) |>
-	drop_na(Invasive)
+	filter(Feeder == 'Y')
+
+# Assign functional values to Native
+for(i in 1:nrow(manip.grad)){
+	if(isTRUE(manip.grad$Invasive[i] == 'Native')){
+		manip.grad$Functional[i] <- 'Native'
+	}
+}
 
 ## --------------- PREPARE DATA ------------------------------------------------
 
@@ -105,12 +108,6 @@ manip.comm[is.na(manip.comm)] <- 0
 
 # Calculate gradient values for manip.comm
 
-# Assign functional values to Native
-for(i in 1:nrow(manip.grad)){
-	if(is.na(manip.grad$Functional[i])){
-		manip.grad$Functional[i] <- 'Native'
-	}
-}
 unique(manip.grad$Functional)
 
 # Create proportion
@@ -243,11 +240,12 @@ retro.time <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2,
                        name = "") +
 	scale_fill_brewer(palette = "Dark2",
                        name = "") +
-	stat_ellipse(level = 0.7) +
+	stat_ellipse(level = 0.7, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
 
 # Ruderal
 class(site.scores$Plot)
@@ -269,11 +267,12 @@ retro.ruderal <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2,
   scale_color_brewer(palette = "Dark2",
                        name = "") +
 	scale_fill_viridis(discrete = FALSE, option = 'H') +
-	stat_ellipse(level = 0.5) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
+	stat_ellipse(level = 0.5, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
 
 # Resistant perennials
 retro.browse <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2, 
@@ -281,43 +280,44 @@ retro.browse <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2,
   scale_color_brewer(palette = "Dark2",
                        name = "") +
 	scale_fill_viridis(discrete = FALSE, option = 'H') +
-	stat_ellipse(level = 0.5) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
+	stat_ellipse(level = 0.5, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
 
 ## --------------- MANIPULATIVE ORDINATION -------------------------------------
 
-# Bring in the code to clean up community data
-source("Scripts/biostats.r")
-
-# Selecting Species 
-occur <- foa.plots(manip.comm)
-
-rare <- which(occur[,2]<5)
-common <- which(occur[,2]>95)
-
-red.manip.comm <- manip.comm[,-c(rare,common)]
-
-# Drop zero rows
-red.comb <- cbind(manip.env, red.manip.comm)
-red.comb$Total <- rowSums(red.comb[ , c(5:16)], na.rm=TRUE)
-red.comb <- red.comb |>
-	filter(Total > 0)
-
-red.manip.comm <- red.comb[5:16]
-red.manip.env<- red.comb[1:4]
+# # Bring in the code to clean up community data
+# source("Scripts/biostats.r")
+# 
+# # Selecting Species 
+# occur <- foa.plots(manip.comm)
+# 
+# rare <- which(occur[,2]<5)
+# common <- which(occur[,2]>95)
+# 
+# red.manip.comm <- manip.comm[,-c(rare,common)]
+# 
+# # Drop zero rows
+# red.comb <- cbind(manip.env, red.manip.comm)
+# red.comb$Total <- rowSums(red.comb[ , c(5:16)], na.rm=TRUE)
+# red.comb <- red.comb |>
+# 	filter(Total > 0)
+# 
+# red.manip.comm <- red.comb[5:16]
+# red.manip.env<- red.comb[1:4]
 
 # Create ordination
-ord <- metaMDS(red.manip.comm, trymax = 1000)
+ord <- metaMDS(manip.comm, trymax = 100)
 
 # Using the scores function from vegan to extract
 # the site scores and convert to a data.frame
 site.scores <- as.data.frame(vegan::scores(ord, "sites"))
 
 # create a column of site names, from the rownames of data.scores
-site.scores <- cbind(red.manip.env, site.scores)
+site.scores <- cbind(manip.env, site.scores)
 
 # Using the scores function from vegan to extract
 # the species scores and convert to a data.frame
@@ -331,16 +331,18 @@ site.scores$Time <- as_factor(site.scores$Time)
 
 # Time 
 manip.time <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2, 
-													fill = Time, linetype = Time, color = Time)) +
+													fill = Time, linetype = Time, color = Time,
+													group = Time)) +
   scale_color_brewer(palette = "Dark2",
                        name = "") +
 	scale_fill_brewer(palette = "Dark2",
                        name = "") +
-	stat_ellipse(level = 0.7) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
+	stat_ellipse(level = 0.7, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
 
 # Ruderal
 class(site.scores$Plot)
@@ -357,25 +359,34 @@ site.scores <- merge(site.scores, manip.grad,
 
 library(viridis)
 manip.ruderal <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2, 
-													fill = Prop.ruderal, linetype = Time, color = Time)) +
+													fill = Prop.ruderal, linetype = Time, color = Time,
+													group = Time)) +
   scale_color_brewer(palette = "Dark2",
                        name = "") +
 	scale_fill_viridis(discrete = FALSE, option = 'H') +
-	stat_ellipse(level = 0.5) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
+	stat_ellipse(level = 0.5, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
 
 # Resistant perennials
 manip.browse <- ggplot(data = site.scores, aes(x = NMDS1, y = NMDS2, 
-													fill = Prop.brows, linetype = Time, color = Time)) +
+													fill = Prop.brows, linetype = Time, color = Time,
+													group = Time)) +
   scale_color_brewer(palette = "Dark2",
                        name = "") +
 	scale_fill_viridis(discrete = FALSE, option = 'H') +
-	stat_ellipse(level = 0.5) +
+	geom_point(color = "black", alpha = 0.3, size = 3, shape = 21) +
+	stat_ellipse(level = 0.5, linewidth = 1.5) +
 	scale_linetype_manual(values=c('solid','dashed')) + 
-	geom_point(color = "black", alpha = 1, size = 4, shape = 21) +
 	theme_bw() +
-	theme(legend.position = 'bottom')
+	theme(legend.position = 'none',
+				axis.title = element_blank())
+## --------------- COMBINE ORDINATIONS -----------------------------------------
+
+library(patchwork)
+(manip.time | manip.ruderal | manip.browse) / (retro.time | retro.ruderal | retro.browse)
+
 
