@@ -275,6 +275,27 @@ ggplot(browse.fig, aes(x = Meter, y = Browse.proportion, fill = Feeder))+
 # feeders increase soil disturbance (small zone of impact)
 # feeders increase browse overall (no gradient)
 # as a result, feeders are having dichotomous impacts on feeders
+## --------------- CHECK PROPORTION OF BAREGROUND AFTER RETURN -----------------
+
+return.sample <- feeder.veg |>
+	filter(Dataset == 'Manipulative' &
+				 	Time == 5 &
+				 	Meter < 4) 
+
+sites <- return.sample |>
+	dplyr::select(Plot, Direction) |>
+	unique()
+
+95*3 # transects x points (1, 2, 3 m) = 285 points
+
+bareground <- return.sample |>
+	group_by(Plot, Direction, Species) |>
+	summarize(Count = n()) |>
+	filter(Species %in% c('Bare Ground', 'Litter'))
+
+sum(bareground$Count) # 117 
+
+117/285 # 41 %
 
 ## --------------- OLD VISUALIZE CLOSE PLANTS --------------------------------------
 rm(list=ls()[! ls() %in% c("feeder.veg")])

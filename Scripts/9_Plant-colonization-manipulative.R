@@ -9,10 +9,75 @@
 ## Contact: masond@ufl.edu, @EcoGraffito
 ## Purpose of script: 
 
-## --------------- CREATE BARE GROUND TO RUDERAL DF ----------------------------
+## --------------- SETUP THE WORKSPACE -----------------------------------------
+library(tidyverse)
 
 # Clear the decks
 rm(list=ls())
+
+# Which sites were resampled?
+resampled <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 5) |>
+	dplyr::select(Plot) |>
+	unique() |>
+	as_vector()
+
+# Get the baseline natives
+native <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Plot %in% resampled) |> 
+	filter(Feeder == 'Y') |>
+	filter(Time == 0) |>
+	filter(Invasive == 'Native') |>
+	dplyr::select(Plot, Direction, Transect, Meter)
+# Could be natives and introduced at same point
+
+# Get the points after baseline
+colonized <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time != 0) |>
+	filter(!is.na(Invasive)) |>
+	dplyr::select(Plot, Time, Direction, Transect, Meter, Functional)
+
+## --------------- MERGE THE DATA ----------------------------------------------
+
+# Set the NA values for functional as Native
+for(i in 1:nrow(colonized)){
+	if(is.na(colonized$Functional[i] == TRUE)){
+		colonized$Functional[i] <- "Native"
+	}
+}
+
+# Create the ruderal dataframe
+ruderal <- colonized %>% 
+	filter(Functional == "Ruderal") |>
+	unique() |>
+  group_by(Plot, Time, Direction, Transect, Meter,) %>%
+  mutate(duplicate = n() > 1) %>% 
+  filter(!duplicate | (duplicate & Functional == "Ruderal")) |>
+	dplyr::select(-duplicate)
+	
+ruderal <- ruderal |>
+	pivot_wider(names_from = Time, values_from = Functional)
+
+test <- merge(native, ruderal, all.x = TRUE)
+
+## --------------- CREATE NATIVE TO INVASIVE DF --------------------------------
+
+bare.ground <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 2) |>
+	filter(Species == 'Bare Ground' | 
+				 	Species == 'Litter' |
+				 	Functional == 'Ruderal') |>
+	dplyr::select(Plot, Direction, Transect, Meter, Species)
+
+
+## --------------- CREATE BARE GROUND TO RUDERAL DF ----------------------------
 
 bare.ground <- read.csv('Clean-data/Feeder-veg.csv') |>
 	filter(Dataset == 'Manipulative') |>
@@ -318,3 +383,55 @@ library(patchwork)
 bare.ground.fig + ruderal.fig
 
 ggsave(filename = 'Figures/Manipulative-colonization.png')
+
+## --------------- WHAT COLONIZED BAREGROUND (MARCUS QUESTION) -----------------
+
+# Clear the decks
+rm(list=ls())
+
+bare.ground <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 2) |>
+	filter(Species == 'Bare Ground' | 
+				 	Species == 'Litter' |
+				 	Functional == 'Ruderal') |>
+	dplyr::select(Plot, Direction, Transect, Meter, Species)
+colnames(bare.ground)[5] <- 'Before'
+
+bare.ground.colonized <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Feeder == 'Y') |>
+	filter(Time == 5) |>
+	dplyr::select(Plot, Direction, Meter, Species)
+
+second.sample <- read.csv('Clean-data/Feeder-veg.csv') |>
+	filter(Dataset == 'Manipulative') |>
+	filter(Time == 2) |>
+		dplyr::select(Plot, Direction, Meter, Transect)
+
+bare.ground.colonized <- left_join(bare.ground.colonized, unique(second.sample))
+
+bare.ground.colonized <- bare.ground.colonized |>
+	dplyr::select(Plot, Transect, Meter, Functional)
+colnames(bare.ground.colonized)[4] <- 'After'
+
+for(i in 1:nrow(bare.ground.colonized)){
+ if(isTRUE(bare.ground.colonized$After[i] == 'Ruderal')){
+			bare.ground.colonized$After[i] <- 1
+ } else {
+ 		  bare.ground.colonized$After[i] <- 0
+ }
+}
+
+bare.ground <- bare.ground |>
+		dplyr::select(Plot, Transect, Meter, Before)
+
+bare.ground.final <- merge(bare.ground, bare.ground.colonized,
+													 by = c('Plot', 'Transect', 'Meter'))
+
+what.colonized <- bare.ground.final |>
+	group_by(Species) |>
+	summarize(Count = n())
+
+sum(what.colonized$Count)

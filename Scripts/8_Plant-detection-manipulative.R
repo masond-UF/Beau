@@ -159,6 +159,20 @@ pprob_metet_feeder <- ggeffect(model, terms = c("Meter[0:10, by = 1]", "Feeder",
       axis.title = element_text(size = 14) # increase axis title size
       )+
   	facet_wrap(~group)
+## --------------- CALCULATE AND VISUALIZE EFFECT SIZE --------------------------
+  
+pred.df <- pred.df %>% separate(Transect.ID, c('Site', 'Treatment', 'Transect'))|>
+  	dplyr::select(-Site, -Treatment)
+    
+feeder <- pred.df |> filter(Feeder == 'Y')
+colnames(feeder)[7] <- 'Feeder.prob'
+feeder <- feeder |> dplyr::select(-Feeder)
+
+control <- pred.df |> filter(Feeder == 'N')
+colnames(control)[7] <- 'Control.prob'
+control <- control |> dplyr::select(-Feeder)
+
+test <- merge(feeder, control, all = FALSE)
 
 ## --------------- TIME 0 & 5 --------------------------------------------------
 
