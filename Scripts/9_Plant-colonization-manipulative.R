@@ -30,17 +30,25 @@ native <- read.csv('Clean-data/Feeder-veg.csv') |>
 	filter(Plot %in% resampled) |> 
 	filter(Feeder == 'Y') |>
 	filter(Time == 0) |>
-	filter(Invasive == 'Native') |>
-	dplyr::select(Plot, Direction, Transect, Meter)
-# Could be natives and introduced at same point
+	filter(Meter < 11) |>
+	select(Plot, Direction, Meter, Transect, Invasive) |>
+	filter(!is.na(Invasive)) |>
+	unique() |>
+	group_by(Plot, Direction, Meter, Transect) |>
+	summarize(Count = n()) |>
+	filter(Count < 2) |>
+	dplyr::select(Plot, Direction, Meter)
 
 # Get the points after baseline
 colonized <- read.csv('Clean-data/Feeder-veg.csv') |>
 	filter(Dataset == 'Manipulative') |>
+	filter(Plot %in% resampled) |> 
 	filter(Feeder == 'Y') |>
-	filter(Time != 0) |>
+	filter(Time == 5) |>
+	filter(Meter < 11) |>
 	filter(!is.na(Invasive)) |>
-	dplyr::select(Plot, Time, Direction, Transect, Meter, Functional)
+	dplyr::select(Plot, Direction, Meter, Functional) |>
+	unique()
 
 ## --------------- MERGE THE DATA ----------------------------------------------
 
@@ -51,31 +59,51 @@ for(i in 1:nrow(colonized)){
 	}
 }
 
-# Create the ruderal dataframe
-ruderal <- colonized %>% 
-	filter(Functional == "Ruderal") |>
-	unique() |>
-  group_by(Plot, Time, Direction, Transect, Meter,) %>%
-  mutate(duplicate = n() > 1) %>% 
-  filter(!duplicate | (duplicate & Functional == "Ruderal")) |>
-	dplyr::select(-duplicate)
+summary(native)
+summary(colonized)
+comb <- merge(native, colonized, by = c('Plot', 'Direction', 'Meter'))
+
+## --------------- CREATE THE RUDERAL AND BROWSED DFs --------------------------
+
+ruderal <- comb
+ruderal$Invaded <- NA
+
+for(i in 1:nrow(ruderal)){
+	if(ruderal$Functional[i] == 'Ruderal'){
+		ruderal$Invaded[i] <- 1
+	} else {
+		ruderal$Invaded[i] <- 0
+	}
+}
+
+ggplot(ruderal, aes(x = Meter, y = Invaded))+
+	geom_point()+
+	geom_smooth(method = 'glm', method.args = list(family = "binomial"))
 	
-ruderal <- ruderal |>
-	pivot_wider(names_from = Time, values_from = Functional)
+browsed <- comb
+browsed$Invaded <- NA
 
-test <- merge(native, ruderal, all.x = TRUE)
+for(i in 1:nrow(browsed)){
+	if(browsed$Functional[i] == 'Browsed perennials'){
+		browsed$Invaded[i] <- 1
+	} else {
+		browsed$Invaded[i] <- 0
+	}
+}
 
-## --------------- CREATE NATIVE TO INVASIVE DF --------------------------------
+ggplot(browsed, aes(x = Meter, y = Invaded))+
+	geom_point()+
+	geom_smooth(method = 'glm', method.args = list(family = "binomial"))
 
-bare.ground <- read.csv('Clean-data/Feeder-veg.csv') |>
-	filter(Dataset == 'Manipulative') |>
-	filter(Feeder == 'Y') |>
-	filter(Time == 2) |>
-	filter(Species == 'Bare Ground' | 
-				 	Species == 'Litter' |
-				 	Functional == 'Ruderal') |>
-	dplyr::select(Plot, Direction, Transect, Meter, Species)
+## --------------- MODEL PROBABILITY OF NATIVE INTRO INTRODUCED ----------------
 
+ruderal.mod <- glmer(Invaded ~ Meter + (1|Plot/Direction),
+										 data = ruderal, family = 'binomial')
+Anova(ruderal.mod)
+
+browsed.mod <- glmer(Invaded ~ Meter + (1|Plot/Direction),
+										 data = browsed, family = 'binomial')
+Anova(browsed.mod)
 
 ## --------------- CREATE BARE GROUND TO RUDERAL DF ----------------------------
 

@@ -77,7 +77,8 @@ Anova(model)
 
 # Use model to predict probabilities
 pred.df <- feeder.veg |>
-	dplyr::select(Plot, Transect.ID, Feeder, Meter, Time)
+	dplyr::select(Plot, Transect.ID, Feeder, Meter, Time) |>
+	unique()
 
 resp <- predict(model, type="probs", newdata=pred.df)
 
@@ -109,8 +110,9 @@ ggplot(pred.df, aes(x = Meter, y = Probability,
 	scale_color_brewer(palette = "Dark2",
                        name = "")+
 	scale_x_continuous(breaks = seq(0, 10, 1))+
+	geom_jitter(shape = 21, alpha = 0.2)+
 	geom_smooth(method = 'lm', formula = y~x, se = TRUE)+
-	facet_wrap(~Feeder*Functional, ncol = 3)+
+	facet_wrap(~Feeder*Functional, ncol = 3, scales = "free_y")+
 	theme_bw()+
 	xlab('Distance from feeder (m)')+
 	ylab('Detection probability')+
@@ -159,20 +161,110 @@ pprob_metet_feeder <- ggeffect(model, terms = c("Meter[0:10, by = 1]", "Feeder",
       axis.title = element_text(size = 14) # increase axis title size
       )+
   	facet_wrap(~group)
-## --------------- CALCULATE AND VISUALIZE EFFECT SIZE --------------------------
+
+## --------------- CALCULATE EFFECT SIZE ---------------------------------------
   
 pred.df <- pred.df %>% separate(Transect.ID, c('Site', 'Treatment', 'Transect'))|>
   	dplyr::select(-Site, -Treatment)
     
-feeder <- pred.df |> filter(Feeder == 'Y')
-colnames(feeder)[7] <- 'Feeder.prob'
-feeder <- feeder |> dplyr::select(-Feeder)
+feeder.0 <- pred.df |> filter(Feeder == 'Y' & Time == 0)
+colnames(feeder.0)[7] <- 'Feeder.prob.0'
+feeder.0 <- feeder.0 |> dplyr::select(-Feeder, -Time)
 
-control <- pred.df |> filter(Feeder == 'N')
-colnames(control)[7] <- 'Control.prob'
-control <- control |> dplyr::select(-Feeder)
+feeder.1 <- pred.df |> filter(Feeder == 'Y' & Time == 1)
+colnames(feeder.1)[7] <- 'Feeder.prob.1'
+feeder.1 <- feeder.1 |> dplyr::select(-Feeder, -Time)
 
-test <- merge(feeder, control, all = FALSE)
+feeder.2 <- pred.df |> filter(Feeder == 'Y' & Time == 2)
+colnames(feeder.2)[7] <- 'Feeder.prob.2'
+feeder.2 <- feeder.2 |> dplyr::select(-Feeder, -Time)
+
+control.0 <- pred.df |> filter(Feeder == 'N' & Time == 0)
+colnames(control.0)[7] <- 'Control.prob.0'
+control.0 <- control.0 |> dplyr::select(-Feeder, -Time)
+
+control.1 <- pred.df |> filter(Feeder == 'N' & Time == 1)
+colnames(control.1)[7] <- 'Control.prob.1'
+control.1 <- control.1 |> dplyr::select(-Feeder, -Time)
+
+control.2 <- pred.df |> filter(Feeder == 'N' & Time == 2)
+colnames(control.2)[7] <- 'Control.prob.2'
+control.2 <- control.2 |> dplyr::select(-Feeder, -Time)
+
+es.df <- merge(feeder.0, feeder.1, all = FALSE)
+es.df <- merge(es.df, feeder.2, all = FALSE)
+es.df <- merge(es.df, control.0, all = FALSE)
+es.df <- merge(es.df, control.1, all = FALSE)
+es.df <- merge(es.df, control.2, all = FALSE)
+
+# Calculate year to year change
+es.df <- es.df |>
+	mutate(Feeder.delta.1 = Feeder.prob.1-Feeder.prob.0,
+				 Feeder.delta.2 = Feeder.prob.2-Feeder.prob.0,
+				 Control.delta.1 = Control.prob.1-Control.prob.0,
+				 Control.delta.2 = Control.prob.2-Control.prob.0) |>
+	dplyr::select(Plot, Transect, Meter, Functional, Feeder.delta.1, Feeder.delta.2,
+								Control.delta.1, Control.delta.2)
+
+# Pivot longer
+es.df <- es.df |>
+	pivot_longer(cols = 5:8, names_to = 'Comparison', values_to = 'Delta')
+
+# Create long dataframe
+es.df$Feeder <- NA
+for(i in 1:nrow(es.df)){
+	if(isTRUE(es.df$Comparison[i] == 'Feeder.delta.1' | 
+						es.df$Comparison[i] =='Feeder.delta.2')){
+	  es.df$Feeder[i] <- 'Y'
+	} else {
+		es.df$Feeder[i] <- 'N'
+	}
+}
+
+es.df$Time <- NA
+for(i in 1:nrow(es.df)){
+	if(isTRUE(es.df$Comparison[i] == 'Feeder.delta.1' | 
+						es.df$Comparison[i] =='Control.delta.1')){
+	  es.df$Time[i] <- '1'
+	} else {
+	  es.df$Time[i] <- '2'
+	}
+}
+
+# Select variables
+es.df <- es.df |>
+	dplyr::select(Plot, Transect, Feeder, Time, Meter, Functional, Delta)
+
+# Drop zeros
+es.df.no.zero <- es.df |>
+	filter(Delta != 0)
+
+## --------------- MODEL AND VISUALIZE EFFECT SIZE -----------------------------
+
+ggplot(es.df.no.zero, aes(x = Meter, y = Delta, linetype = Feeder,
+													color = Functional))+
+	geom_hline(yintercept = 0, color = 'black')+
+	scale_color_brewer(palette = "Dark2",
+                       name = "")+
+	scale_x_continuous(breaks = seq(0, 10, 1))+
+	scale_y_continuous(breaks = seq(-0.07, 0.07, 0.02))+
+	geom_smooth()+
+	facet_wrap(~Functional*Time, ncol = 2)+
+		theme_bw()+
+	xlab('Distance from feeder (m)')+
+	ylab('Change in detection probability')+
+	theme(panel.grid.minor = element_blank(),
+				panel.grid.major = element_blank(),
+				legend.position = 'right',
+				strip.background = element_blank(),
+  			strip.text.x = element_blank(),
+				aspect.ratio = 0.9,
+				text=element_text(size=20),
+				axis.title = element_text(face="bold"))
+
+ggsave('Figures/Manipulative-veg-delta.png', height = 10, width = 8,
+			 unit = 'in')
+
 
 ## --------------- TIME 0 & 5 --------------------------------------------------
 
